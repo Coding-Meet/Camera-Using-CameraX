@@ -3,20 +3,20 @@ package com.coding.camerausingcamerax
 import android.content.DialogInterface
 import android.content.pm.PackageManager
 import android.os.*
-import androidx.appcompat.app.AppCompatActivity
+import android.view.*
 import android.widget.Toast
+import androidx.appcompat.app.AppCompatActivity
 import androidx.camera.core.*
 import androidx.camera.core.ImageCapture.OutputFileOptions
-import androidx.camera.core.ImageCaptureException
 import androidx.camera.core.resolutionselector.*
 import androidx.camera.lifecycle.ProcessCameraProvider
+import androidx.constraintlayout.widget.ConstraintLayout
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import com.coding.camerausingcamerax.databinding.ActivityMainBinding
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Locale
-import kotlin.math.abs
 
 class MainActivity : AppCompatActivity() {
 
@@ -41,7 +41,9 @@ class MainActivity : AppCompatActivity() {
     private lateinit var cameraProvider: ProcessCameraProvider
     private lateinit var camera: Camera
     private lateinit var cameraSelector: CameraSelector
+    private var orientationEventListener: OrientationEventListener? = null
     private var lensFacing = CameraSelector.LENS_FACING_BACK
+    private var aspectRatio = AspectRatio.RATIO_16_9
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -56,6 +58,18 @@ class MainActivity : AppCompatActivity() {
                 CameraSelector.LENS_FACING_BACK
             } else {
                 CameraSelector.LENS_FACING_FRONT
+            }
+            bindCameraUserCases()
+        }
+        mainBinding.aspectRatioTxt.setOnClickListener {
+            if (aspectRatio == AspectRatio.RATIO_16_9) {
+                aspectRatio = AspectRatio.RATIO_4_3
+                setAspectRatio("H,4:3")
+                mainBinding.aspectRatioTxt.text = "4:3"
+            } else {
+                aspectRatio = AspectRatio.RATIO_16_9
+                setAspectRatio("H,0:0")
+                mainBinding.aspectRatioTxt.text = "16:9"
             }
             bindCameraUserCases()
         }
@@ -151,27 +165,14 @@ class MainActivity : AppCompatActivity() {
         }, ContextCompat.getMainExecutor(this))
     }
 
-    private fun aspectRatio(width: Int, height: Int): Int {
-        val previewRatio = maxOf(width, height).toDouble() / minOf(width, height)
-        return if (abs(previewRatio - 4.0 / 3.0) <= abs(previewRatio - 16.0 / 9.0)) {
-            AspectRatio.RATIO_4_3
-        } else {
-            AspectRatio.RATIO_16_9
-        }
-    }
 
     private fun bindCameraUserCases() {
-        val screenAspectRatio = aspectRatio(
-            mainBinding.previewView.width,
-            mainBinding.previewView.height
-        )
         val rotation = mainBinding.previewView.display.rotation
-
 
         val resolutionSelector = ResolutionSelector.Builder()
             .setAspectRatioStrategy(
                 AspectRatioStrategy(
-                    screenAspectRatio,
+                    aspectRatio,
                     AspectRatioStrategy.FALLBACK_RULE_AUTO
                 )
             )
@@ -194,6 +195,19 @@ class MainActivity : AppCompatActivity() {
         cameraSelector = CameraSelector.Builder()
             .requireLensFacing(lensFacing)
             .build()
+
+        orientationEventListener = object : OrientationEventListener(this) {
+            override fun onOrientationChanged(orientation: Int) {
+                // Monitors orientation values to determine the target rotation value
+                imageCapture.targetRotation = when (orientation) {
+                    in 45..134 -> Surface.ROTATION_270
+                    in 135..224 -> Surface.ROTATION_180
+                    in 225..314 -> Surface.ROTATION_90
+                    else -> Surface.ROTATION_0
+                }
+            }
+        }
+        orientationEventListener?.enable()
 
         try {
             cameraProvider.unbindAll()
@@ -239,8 +253,12 @@ class MainActivity : AppCompatActivity() {
         val fileName = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault())
             .format(System.currentTimeMillis()) + ".jpg"
         val imageFile = File(imageFolder, fileName)
-        val outputOption = OutputFileOptions.Builder(imageFile).build()
 
+        val metadata = ImageCapture.Metadata().apply {
+            isReversedHorizontal = (lensFacing == CameraSelector.LENS_FACING_FRONT)
+        }
+        val outputOption = OutputFileOptions.Builder(imageFile)
+            .setMetadata(metadata).build()
 
         imageCapture.takePicture(
             outputOption,
@@ -266,4 +284,24 @@ class MainActivity : AppCompatActivity() {
             }
         )
     }
+
+    private fun setAspectRatio(ratio: String) {
+        mainBinding.previewView.layoutParams = mainBinding.previewView.layoutParams.apply {
+            if (this is ConstraintLayout.LayoutParams) {
+                dimensionRatio = ratio
+            }
+        }
+    }
+
+
+    override fun onResume() {
+        super.onResume()
+        orientationEventListener?.enable()
+    }
+
+    override fun onPause() {
+        super.onPause()
+        orientationEventListener?.disable()
+    }
+
 }
