@@ -2,6 +2,7 @@ package com.coding.camerausingcamerax
 
 import android.content.DialogInterface
 import android.content.pm.PackageManager
+import android.graphics.RectF
 import android.os.*
 import android.view.*
 import android.widget.Toast
@@ -17,6 +18,7 @@ import com.coding.camerausingcamerax.databinding.ActivityMainBinding
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Locale
+import java.util.concurrent.TimeUnit
 
 class MainActivity : AppCompatActivity() {
 
@@ -215,8 +217,46 @@ class MainActivity : AppCompatActivity() {
             camera = cameraProvider.bindToLifecycle(
                 this, cameraSelector, preview, imageCapture
             )
+            setUpZoomTapToFocus()
         } catch (e: Exception) {
             e.printStackTrace()
+        }
+    }
+
+    private fun setUpZoomTapToFocus(){
+        val listener = object : ScaleGestureDetector.SimpleOnScaleGestureListener(){
+            override fun onScale(detector: ScaleGestureDetector): Boolean {
+                val currentZoomRatio = camera.cameraInfo.zoomState.value?.zoomRatio  ?: 1f
+                val delta = detector.scaleFactor
+                camera.cameraControl.setZoomRatio(currentZoomRatio * delta)
+                return true
+            }
+        }
+
+        val scaleGestureDetector = ScaleGestureDetector(this,listener)
+
+        mainBinding.previewView.setOnTouchListener { view, event ->
+            scaleGestureDetector.onTouchEvent(event)
+            if (event.action == MotionEvent.ACTION_DOWN){
+                val factory = mainBinding.previewView.meteringPointFactory
+                val point = factory.createPoint(event.x,event.y)
+                val action = FocusMeteringAction.Builder(point,FocusMeteringAction.FLAG_AF)
+                    .setAutoCancelDuration(2,TimeUnit.SECONDS)
+                    .build()
+
+                val x = event.x
+                val y = event.y
+
+                val focusCircle = RectF(x-50,y-50, x+50,y+50)
+
+                mainBinding.focusCircleView.focusCircle = focusCircle
+                mainBinding.focusCircleView.invalidate()
+
+                camera.cameraControl.startFocusAndMetering(action)
+
+                view.performClick()
+            }
+            true
         }
     }
 
