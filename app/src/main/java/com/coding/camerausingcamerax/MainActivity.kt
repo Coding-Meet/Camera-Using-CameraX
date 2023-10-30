@@ -1,9 +1,11 @@
 package com.coding.camerausingcamerax
 
+import android.content.ContentValues
 import android.content.DialogInterface
 import android.content.pm.PackageManager
 import android.graphics.RectF
 import android.os.*
+import android.provider.MediaStore
 import android.view.*
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
@@ -292,13 +294,30 @@ class MainActivity : AppCompatActivity() {
 
         val fileName = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault())
             .format(System.currentTimeMillis()) + ".jpg"
-        val imageFile = File(imageFolder, fileName)
+
+        val contentValues = ContentValues().apply {
+            put(MediaStore.Images.Media.DISPLAY_NAME,fileName)
+            put(MediaStore.Images.Media.MIME_TYPE,"image/jpeg")
+            if (Build.VERSION.SDK_INT > Build.VERSION_CODES.P){
+                put(MediaStore.Images.Media.RELATIVE_PATH,"Pictures/Images")
+            }
+        }
 
         val metadata = ImageCapture.Metadata().apply {
             isReversedHorizontal = (lensFacing == CameraSelector.LENS_FACING_FRONT)
         }
-        val outputOption = OutputFileOptions.Builder(imageFile)
-            .setMetadata(metadata).build()
+        val outputOption =
+            if (Build.VERSION.SDK_INT > Build.VERSION_CODES.P) {
+                OutputFileOptions.Builder(
+                    contentResolver,
+                    MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
+                    contentValues
+                ).setMetadata(metadata).build()
+            }else{
+                val imageFile = File(imageFolder, fileName)
+                OutputFileOptions.Builder(imageFile)
+                    .setMetadata(metadata).build()
+            }
 
         imageCapture.takePicture(
             outputOption,
