@@ -414,10 +414,11 @@ class MainActivity : AppCompatActivity() {
         val curRecording = recording
         if (curRecording != null){
             curRecording.stop()
+            stopRecording()
             recording = null
             return
         }
-
+        startRecording()
         val fileName = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault())
             .format(System.currentTimeMillis()) + ".mp4"
 
@@ -486,6 +487,44 @@ class MainActivity : AppCompatActivity() {
     override fun onPause() {
         super.onPause()
         orientationEventListener?.disable()
+        if (recording != null){
+            recording?.stop()
+            captureVideo()
+        }
+    }
+
+    private val handler = Handler(Looper.getMainLooper())
+    private val updateTimer = object : Runnable{
+        override fun run() {
+            val currentTime = SystemClock.elapsedRealtime() - mainBinding.recodingTimerC.base
+            val timeString = currentTime.toFormattedTime()
+            mainBinding.recodingTimerC.text = timeString
+            handler.postDelayed(this,1000)
+        }
+    }
+
+    private fun Long.toFormattedTime():String{
+        val seconds = ((this / 1000) % 60).toInt()
+        val minutes = ((this / (1000 * 60)) % 60).toInt()
+        val hours = ((this / (1000 * 60 * 60)) % 24).toInt()
+
+       return if (hours >0){
+            String.format("%02d:%02d:%02d",hours,minutes,seconds)
+        }else{
+            String.format("%02d:%02d",minutes,seconds)
+        }
+    }
+
+    private fun startRecording(){
+        mainBinding.recodingTimerC.visible()
+        mainBinding.recodingTimerC.base = SystemClock.elapsedRealtime()
+        mainBinding.recodingTimerC.start()
+        handler.post(updateTimer)
+    }
+    private fun stopRecording(){
+        mainBinding.recodingTimerC.gone()
+        mainBinding.recodingTimerC.stop()
+        handler.removeCallbacks(updateTimer)
     }
 
 }
