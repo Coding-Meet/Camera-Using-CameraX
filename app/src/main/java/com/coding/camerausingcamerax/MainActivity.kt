@@ -1,11 +1,13 @@
 package com.coding.camerausingcamerax
 
+
 import android.content.ContentValues
 import android.content.DialogInterface
 import android.content.pm.PackageManager
 import android.graphics.RectF
 import android.os.*
 import android.provider.MediaStore
+import android.util.Log
 import android.view.*
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
@@ -13,6 +15,14 @@ import androidx.camera.core.*
 import androidx.camera.core.ImageCapture.OutputFileOptions
 import androidx.camera.core.resolutionselector.*
 import androidx.camera.lifecycle.ProcessCameraProvider
+import androidx.camera.video.FallbackStrategy
+import androidx.camera.video.MediaStoreOutputOptions
+import androidx.camera.video.Quality
+import androidx.camera.video.QualitySelector
+import androidx.camera.video.Recorder
+import androidx.camera.video.Recording
+import androidx.camera.video.VideoCapture
+import androidx.camera.video.VideoRecordEvent
 import androidx.constraintlayout.widget.ConstraintLayout
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
@@ -32,14 +42,21 @@ class MainActivity : AppCompatActivity() {
     private val multiplePermissionId = 14
     private val multiplePermissionNameList = if (Build.VERSION.SDK_INT >= 33) {
         arrayListOf(
-            android.Manifest.permission.CAMERA
+            android.Manifest.permission.CAMERA,
+            android.Manifest.permission.RECORD_AUDIO
         )
     } else {
         arrayListOf(
             android.Manifest.permission.CAMERA,
+            android.Manifest.permission.RECORD_AUDIO,
             android.Manifest.permission.WRITE_EXTERNAL_STORAGE
         )
     }
+
+    private lateinit var videoCapture: VideoCapture<Recorder>
+    private var recording: Recording? = null
+
+    private var isPhoto = true
 
     private lateinit var imageCapture: ImageCapture
     private lateinit var cameraProvider: ProcessCameraProvider
@@ -77,8 +94,24 @@ class MainActivity : AppCompatActivity() {
             }
             bindCameraUserCases()
         }
+        mainBinding.changeCameraToVideoIB.setOnClickListener {
+            isPhoto = !isPhoto
+            if (isPhoto){
+                mainBinding.changeCameraToVideoIB.setImageResource(R.drawable.ic_photo)
+                mainBinding.captureIB.setImageResource(R.drawable.camera)
+            }else{
+                mainBinding.changeCameraToVideoIB.setImageResource(R.drawable.ic_videocam)
+                mainBinding.captureIB.setImageResource(R.drawable.ic_start)
+            }
+
+        }
+
         mainBinding.captureIB.setOnClickListener {
-            takePhoto()
+            if (isPhoto) {
+                takePhoto()
+            }else{
+                captureVideo()
+            }
         }
         mainBinding.flashToggleIB.setOnClickListener {
             setFlashIcon(camera)
@@ -190,6 +223,20 @@ class MainActivity : AppCompatActivity() {
                 it.setSurfaceProvider(mainBinding.previewView.surfaceProvider)
             }
 
+        val recorder = Recorder.Builder()
+            .setQualitySelector(
+                QualitySelector.from(
+                    Quality.HIGHEST,
+                    FallbackStrategy.higherQualityOrLowerThan(Quality.SD)
+                )
+            )
+            .setAspectRatio(aspectRatio)
+            .build()
+
+        videoCapture = VideoCapture.withOutput(recorder).apply {
+            targetRotation = rotation
+        }
+
         imageCapture = ImageCapture.Builder()
             .setCaptureMode(ImageCapture.CAPTURE_MODE_MAXIMIZE_QUALITY)
             .setResolutionSelector(resolutionSelector)
@@ -203,12 +250,14 @@ class MainActivity : AppCompatActivity() {
         orientationEventListener = object : OrientationEventListener(this) {
             override fun onOrientationChanged(orientation: Int) {
                 // Monitors orientation values to determine the target rotation value
-                imageCapture.targetRotation = when (orientation) {
+               val myRotation = when (orientation) {
                     in 45..134 -> Surface.ROTATION_270
                     in 135..224 -> Surface.ROTATION_180
                     in 225..314 -> Surface.ROTATION_90
                     else -> Surface.ROTATION_0
                 }
+                imageCapture.targetRotation = myRotation
+                videoCapture.targetRotation = myRotation
             }
         }
         orientationEventListener?.enable()
@@ -217,7 +266,7 @@ class MainActivity : AppCompatActivity() {
             cameraProvider.unbindAll()
 
             camera = cameraProvider.bindToLifecycle(
-                this, cameraSelector, preview, imageCapture
+                this, cameraSelector, preview, imageCapture,videoCapture
             )
             setUpZoomTapToFocus()
         } catch (e: Exception) {
@@ -350,6 +399,82 @@ class MainActivity : AppCompatActivity() {
                 dimensionRatio = ratio
             }
         }
+    }
+
+    private fun captureVideo(){
+
+        mainBinding.captureIB.isEnabled = false
+
+        mainBinding.flashToggleIB.gone()
+        mainBinding.flipCameraIB.gone()
+        mainBinding.aspectRatioTxt.gone()
+        mainBinding.changeCameraToVideoIB.gone()
+
+
+        val curRecording = recording
+        if (curRecording != null){
+            curRecording.stop()
+            recording = null
+            return
+        }
+
+        val fileName = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault())
+            .format(System.currentTimeMillis()) + ".mp4"
+
+        val contentValues = ContentValues().apply {
+            put(MediaStore.Images.Media.DISPLAY_NAME,fileName)
+            put(MediaStore.Images.Media.MIME_TYPE,"video/mp4")
+            if (Build.VERSION.SDK_INT > Build.VERSION_CODES.P){
+                put(MediaStore.Images.Media.RELATIVE_PATH,"Video")
+            }
+        }
+
+        val mediaStoreOutputOptions = MediaStoreOutputOptions
+            .Builder(contentResolver,MediaStore.Video.Media.EXTERNAL_CONTENT_URI)
+            .setContentValues(contentValues)
+            .build()
+
+        recording = videoCapture.output
+            .prepareRecording(this, mediaStoreOutputOptions)
+            .apply {
+                if (ActivityCompat.checkSelfPermission(
+                        this@MainActivity,
+                        android.Manifest.permission.RECORD_AUDIO
+                    ) == PackageManager.PERMISSION_GRANTED
+                ) {
+                    withAudioEnabled()
+                }
+            }
+            .start(ContextCompat.getMainExecutor(this)){recordEvent->
+                when(recordEvent){
+                    is VideoRecordEvent.Start -> {
+                        mainBinding.captureIB.setImageResource(R.drawable.ic_stop)
+                        mainBinding.captureIB.isEnabled = true
+                    }
+                    is VideoRecordEvent.Finalize -> {
+                        if (!recordEvent.hasError()){
+                            val message = "Video Capture Succeeded: " + "${recordEvent.outputResults.outputUri}"
+                            Toast.makeText(
+                                this@MainActivity,
+                                message,
+                                Toast.LENGTH_LONG
+                            ).show()
+                        }else{
+                            recording?.close()
+                            recording = null
+                            Log.d("error", recordEvent.error.toString())
+                        }
+                        mainBinding.captureIB.setImageResource(R.drawable.ic_start)
+                        mainBinding.captureIB.isEnabled = true
+
+                        mainBinding.flashToggleIB.visible()
+                        mainBinding.flipCameraIB.visible()
+                        mainBinding.aspectRatioTxt.visible()
+                        mainBinding.changeCameraToVideoIB.visible()
+                    }
+                }
+            }
+
     }
 
 

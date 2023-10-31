@@ -73,5 +73,15 @@
         android:textColor="@color/white"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintTop_toBottomOf="@+id/flipCameraIB" />
-
+    <ImageButton
+        android:id="@+id/changeCameraToVideoIB"
+        android:layout_width="30dp"
+        android:layout_height="30dp"
+        android:layout_margin="10dp"
+        android:background="?attr/selectableItemBackgroundBorderless"
+        android:scaleType="centerCrop"
+        android:src="@drawable/ic_photo"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintTop_toBottomOf="@+id/aspectRatioTxt"
+        app:tint="@color/white" />
 </androidx.constraintlayout.widget.ConstraintLayout>
