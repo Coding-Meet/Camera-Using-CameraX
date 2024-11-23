@@ -221,7 +221,7 @@ class MainActivity : AppCompatActivity() {
             .setTargetRotation(rotation)
             .build()
             .also {
-                it.setSurfaceProvider(mainBinding.previewView.surfaceProvider)
+                it.surfaceProvider = mainBinding.previewView.surfaceProvider
             }
 
         val recorder = Recorder.Builder()
@@ -356,11 +356,17 @@ class MainActivity : AppCompatActivity() {
         val metadata = ImageCapture.Metadata().apply {
             isReversedHorizontal = (lensFacing == CameraSelector.LENS_FACING_FRONT)
         }
+        val uri =
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                MediaStore.Images.Media.getContentUri(MediaStore.VOLUME_EXTERNAL)
+            } else {
+                MediaStore.Images.Media.EXTERNAL_CONTENT_URI
+            }
         val outputOption =
             if (Build.VERSION.SDK_INT > Build.VERSION_CODES.P) {
                 OutputFileOptions.Builder(
                     contentResolver,
-                    MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
+                    uri,
                     contentValues
                 ).setMetadata(metadata).build()
             }else{
@@ -412,9 +418,8 @@ class MainActivity : AppCompatActivity() {
         mainBinding.changeCameraToVideoIB.gone()
 
 
-        val curRecording = recording
-        if (curRecording != null){
-            curRecording.stop()
+        if (recording != null){
+            recording?.stop()
             stopRecording()
             recording = null
             return
@@ -424,15 +429,15 @@ class MainActivity : AppCompatActivity() {
             .format(System.currentTimeMillis()) + ".mp4"
 
         val contentValues = ContentValues().apply {
-            put(MediaStore.Images.Media.DISPLAY_NAME,fileName)
-            put(MediaStore.Images.Media.MIME_TYPE,"video/mp4")
-            if (Build.VERSION.SDK_INT > Build.VERSION_CODES.P){
-                put(MediaStore.Images.Media.RELATIVE_PATH,"Video")
+            put(MediaStore.Video.Media.DISPLAY_NAME,fileName)
+            put(MediaStore.Video.Media.MIME_TYPE,"video/mp4")
+            if (Build.VERSION.SDK_INT > Build.VERSION_CODES.P) {
+                put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_MOVIES)
             }
         }
 
         val mediaStoreOutputOptions = MediaStoreOutputOptions
-            .Builder(contentResolver,MediaStore.Video.Media.EXTERNAL_CONTENT_URI)
+            .Builder(contentResolver, MediaStore.Video.Media.EXTERNAL_CONTENT_URI)
             .setContentValues(contentValues)
             .build()
 
@@ -486,12 +491,12 @@ class MainActivity : AppCompatActivity() {
     }
 
     override fun onPause() {
-        super.onPause()
         orientationEventListener?.disable()
         if (recording != null){
             recording?.stop()
             captureVideo()
         }
+        super.onPause()
     }
 
     private val handler = Handler(Looper.getMainLooper())
