@@ -37,3 +37,7 @@ fun View.visible(){
 fun View.gone(){
     visibility = View.GONE
 }
+
+const val ORIENT_PORTRAIT = 0
+const val ORIENT_LANDSCAPE_LEFT = 1
+const val ORIENT_LANDSCAPE_RIGHT = 2
